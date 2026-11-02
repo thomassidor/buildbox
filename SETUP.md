@@ -34,7 +34,8 @@ From a phone or computer, in a browser. About 30–45 minutes, most of it waitin
 2. Container name **`buildbox`**, tick **Enable auto-restart** → Next.
 3. **Volume settings** → Add folder → `docker/buildbox` → mount path **`/work`**.
 4. **Execution command:** `sleep infinity`.
-5. Leave the rest as it is → Next → **Done**; it starts.
+5. **Environment** → add `HOME` with the value `/work/home` (the logins then live on the volume).
+6. Leave the rest as it is → Next → **Done**; it starts.
 
 ## 6. Inside the container
 
@@ -73,4 +74,6 @@ In the Claude app, a session can now ask to connect to `/work/widgetkeeper` (or 
 - A command fails: copy what the terminal says.
 - Nothing running: `/work/buildbox/rc.sh list`; what happened: `cat /work/buildbox/state/rc.log`; the live windows: `tmux attach -t rc` (Ctrl-b then d to leave).
 - After a NAS restart everything comes back by itself (auto-restart and the supervisor).
-- The logins and the tools from step 6 live in the container: deleting and re-creating it means doing 6 again (the clones in `/work` stay).
+- A Remote Control that doesn't come up: `/work/buildbox/rc.sh logs <folder>` shows its screen (an expired login, say).
+- Deleting and re-creating the container: do step 5 again with the execution command `bash /work/buildbox/rc.sh supervise`, nothing more. The logins are in `/work/home` and the supervisor installs tmux and Claude Code again.
+- A change pushed to the buildbox repo reaches the NAS within an hour by itself.

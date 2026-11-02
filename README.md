@@ -2,13 +2,14 @@
 
 A Docker container on the Synology NAS at home that runs Claude Code with Remote Control for any number of repos, so a Claude Code session in the cloud can work on the home network while I'm away. It started for Widgetkeeper: Athom's cloud relay to the Homey turns down app uploads (every `POST /api/manager/devkit/` came back 500 through it; Homey CLI 4.6.1, firmware 13.5.3, 2026-11-01), so the Homey CLI has to run at home.
 
-`rc.sh` keeps a `claude remote-control` running for this folder, always, and for every repo or worktree on its list, and adds more on request.
+`rc.sh` keeps a `claude remote-control` running for this folder, always, and for every repo or worktree on its list, and adds more on request. It keeps the home folder on the volume, installs what a re-created container lacks, and pulls this repo every hour, so a change pushed to `rc.sh` reaches the box by itself.
 
 ## Layout in the container
 
 | Path | What |
 |---|---|
 | `/work` | the volume (`docker/buildbox` on the NAS) |
+| `/work/home` | the home folder (`HOME`): the logins of Claude, git and tools like the Homey CLI |
 | `/work/buildbox` | this repo, the base folder: its Remote Control always runs and can't be removed; `state/` (gitignored) has the folder list and `rc.log` |
 | `/work/<repo>` | a repo cloned with `rc.sh clone` |
 | `/work/<repo>-<name>` | a worktree made with `rc.sh add` |
@@ -17,7 +18,7 @@ A Docker container on the Synology NAS at home that runs Claude Code with Remote
 
 1. Package Center → **Container Manager**. File Station → the folder `docker/buildbox`.
 2. Container Manager → Registry → `node` → Download → tag `22-bookworm`.
-3. Image → `node:22-bookworm` → Run: name `buildbox`, **Enable auto-restart**, volume `docker/buildbox` → `/work`, execution command `sleep infinity` (for now).
+3. Image → `node:22-bookworm` → Run: name `buildbox`, **Enable auto-restart**, volume `docker/buildbox` → `/work`, execution command `sleep infinity` (for now), environment variable `HOME` = `/work/home`.
 4. Container → `buildbox` → Action → Open terminal → Create → `bash`:
    ```
    apt-get update && apt-get install -y tmux
@@ -33,7 +34,7 @@ A Docker container on the Synology NAS at home that runs Claude Code with Remote
    /work/buildbox/rc.sh clone https://github.com/thomassidor/widgetkeeper.git
    ```
 
-The logins (Claude, GitHub, and those of tools like the Homey CLI) and what step 4 installed live in the container, so they survive a restart, not a re-created container.
+The logins (Claude, GitHub, and those of tools like the Homey CLI) live in `/work/home`, so they survive a re-created container too. A container made without `HOME=/work/home` still works: `rc.sh` moves to `/work/home` by itself (the first time copying the container's own home there), but a terminal opened in DSM then has the old home. What step 4 installed is lost with the container; the supervisor installs tmux and Claude Code again when they're missing. So a new container needs only step 3, with `bash /work/buildbox/rc.sh supervise` as its command.
 
 ## Using it
 
@@ -41,11 +42,14 @@ The logins (Claude, GitHub, and those of tools like the Homey CLI) and what step
 - `rc.sh add <repo> <name> [branch]`: a worktree `/work/<repo>-<name>` of `/work/<repo>`, on a new branch `<name>` from `origin/<branch>` (default the repo's current branch; an existing branch `<name>` is checked out instead), set up, with its own Remote Control. One Remote Control serves every session in its folder, so this is only for work that needs its own copy of the code.
 - `rc.sh remove <folder>`: stops its Remote Control and takes it off the list. The folder stays (`git -C /work/<repo> worktree remove /work/<repo>-<name>` deletes a worktree). The buildbox folder can't be removed, so one Remote Control always runs.
 - `rc.sh list`: the folders and whether each one's Remote Control runs.
+- `rc.sh logs <folder> [lines]`: the end of that folder's Remote Control screen (40 lines) and its last lines in `rc.log`. The first thing to look at when one doesn't come up.
 - Setting up a folder runs its `.buildbox/setup.sh` if it has one (executable, run in the folder), else `npm ci` (`npm install` without a lockfile) for a Node project, else nothing.
-- A Remote Control that exits is started again after 5 s; a window that was closed, within 15 s. `state/rc.log` has the starts and exits; `tmux attach -t rc` shows them (Ctrl-b d leaves).
+- A Remote Control that exits is started again after 5 s; one that keeps exiting within a minute of starting (an expired login, say), after 20 s, 40 s, … up to every 5 minutes, with a line in `rc.log` after the third time. A window that was closed comes back within 15 s.
+- Every hour (and when it starts) the supervisor runs `git pull --ff-only` here; when `rc.sh` changed it restarts itself with the new one, leaving the Remote Controls running. A pull that fails (local changes, a diverged branch) is logged and skipped.
+- `rc.log` keeps its last 1000 lines. `state/rc.log` has the starts and exits; `tmux attach -t rc` shows them (Ctrl-b d leaves).
 - A supervised folder is marked trusted in `~/.claude.json`, as nobody is there to answer Claude Code's question.
 - Folder names are letters, digits, `.`, `_` and `-`, and unique by name (each is a tmux window).
-- Settings by environment variable: `WORK` (`/work`), `STATE` (`state/` here), `CLAUDE_BIN`, `TMUX_SESSION` (`rc`), `CHECK_EVERY` (15 s).
+- Settings by environment variable: `WORK` (`/work`), `STATE` (`state/` here), `BOX_HOME` (`/work/home`), `CLAUDE_BIN`, `TMUX_SESSION` (`rc`), `CHECK_EVERY` (15 s), `UPDATE_EVERY` (3600 s; 0 for no pulls).
 
 ## Widgetkeeper
 
@@ -53,4 +57,4 @@ The logins (Claude, GitHub, and those of tools like the Homey CLI) and what step
 
 ## Tested
 
-`rc.sh` was tested in a Linux container with a stand-in `claude` that exits after a few seconds (2026-11-02): the base folder under the supervisor, `clone` of a Node repo (`npm ci`) and of one with `.buildbox/setup.sh`, `add` with a real worktree, a killed window brought back, `remove`, and the refusals (the base folder, a repo not cloned, names with `/` or `..`). Not yet with the real `claude remote-control` or on the Synology.
+`rc.sh` was tested in a Linux container with a stand-in `claude` that exits after a few seconds (2026-11-02): the base folder under the supervisor, `clone` of a Node repo (`npm ci`) and of one with `.buildbox/setup.sh`, `add` with a real worktree, a killed window brought back, `remove`, and the refusals (the base folder, a repo not cloned, names with `/` or `..`). Then (same day, same way): the home folder made on `/work/home` from the old one and used by the Remote Controls, `logs`, the backoff of a folder whose stand-in exits at once, and a push of a changed `rc.sh` taking over the supervisor while the windows ran on. Not yet with the real `claude remote-control` or on the Synology.
