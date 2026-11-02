@@ -13,7 +13,7 @@ A Docker container on the Synology NAS at home that runs Claude Code with Remote
 | `/work/<repo>` | a repo cloned with `rc.sh clone` |
 | `/work/<repo>-<name>` | a worktree made with `rc.sh add` |
 
-## Setting it up (DSM in a browser)
+## Setting it up (DSM in a browser; SETUP.md has every step, from a new NAS on)
 
 1. Package Center → **Container Manager**. File Station → the folder `docker/buildbox`.
 2. Container Manager → Registry → `node` → Download → tag `22-bookworm`.
