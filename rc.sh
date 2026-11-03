@@ -100,7 +100,7 @@ run() {
   cd "$dir" || exit 1
   while true; do
     began=$SECONDS
-    "$CLAUDE_BIN" remote-control
+    "$CLAUDE_BIN" remote-control --spawn=same-dir
     code=$? took=$((SECONDS - began))
     if [ "$took" -lt 60 ]; then quick=$((quick + 1)); else quick=0; fi
     wait=$((5 << (quick > 6 ? 6 : quick))); [ "$wait" -gt 300 ] && wait=300
