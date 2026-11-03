@@ -33,15 +33,22 @@ From a phone or computer, in a browser. About 30–45 minutes, most of it waitin
 1. Image → `node:22-bookworm` → **Run**.
 2. Container name **`buildbox`**, tick **Enable auto-restart** → Next.
 3. **Volume settings** → Add folder → `docker/buildbox` → mount path **`/work`**.
-4. **Execution command:** `sleep infinity`.
+4. **Execution command** (often under Environment or Advanced):
+   ```
+   bash -c 'until [ -x /work/buildbox/rc.sh ]; do sleep 10; done; exec bash /work/buildbox/rc.sh supervise'
+   ```
+   It waits until step 6 has put this repo in `/work`, then starts the supervisor, and again after every restart. Container Manager may not let you change it later (only by deleting and re-creating the container), so set it now.
 5. **Environment** → add `HOME` with the value `/work/home` (the logins then live on the volume).
 6. Leave the rest as it is → Next → **Done**; it starts.
 
 ## 6. Inside the container
 
-1. Container → `buildbox` → **Action** → **Open terminal** → **Create** → type `bash` and press Enter.
+1. Open a terminal in the container, either:
+   - Container → `buildbox` → **Action** → **Open terminal** → **Create** → type `bash` and press Enter (DSM's terminal: on a phone, pasting doesn't work), or
+   - over SSH, where pasting works: Control Panel → **Terminal & SNMP** → **Enable SSH service**; an SSH app (e.g. Termius) to the NAS's address, port 22, your DSM user; then `sudo docker exec -it buildbox bash` (your DSM password).
 2. Paste one line at a time and wait for each:
    ```
+   mkdir -p /work/home && cd /work/home
    apt-get update && apt-get install -y tmux
    npm install -g @anthropic-ai/claude-code
    git config --global credential.helper store
@@ -49,23 +56,18 @@ From a phone or computer, in a browser. About 30–45 minutes, most of it waitin
    ```
    `git clone` asks for a **Username** (your GitHub user) and a **Password**: paste the token from step 2.
 3. Type `claude`, open the link it shows, log in, paste the code back, then type `/exit`.
+4. The supervisor has started by itself within 10 s of the clone; its Remote Control keeps retrying until the login is done. `/work/buildbox/rc.sh list` shows `running  /work/buildbox`.
 
-## 7. The supervisor
+## 7. The repos
 
-1. Container → `buildbox` → **Stop**.
-2. **Action** → **Edit** → Execution command: `bash /work/buildbox/rc.sh supervise` → **Save**.
-3. **Start**.
-
-## 8. The repos
-
-1. Open the terminal again (step 6.1) and run:
+1. In the terminal (step 6.1) run:
    ```
    /work/buildbox/rc.sh clone https://github.com/thomassidor/widgetkeeper.git
    /work/buildbox/rc.sh list
    ```
 2. `list` shows `running  /work/buildbox` and `running  /work/widgetkeeper`.
 
-## 9. Use it
+## 8. Use it
 
 In the Claude app, a session can now ask to connect to `/work/widgetkeeper` (or `/work/buildbox`); approve it once. For Widgetkeeper the session then logs the Homey CLI in (a link to open, a code to paste back) and can install, read diagnostics and build test dashboards.
 
@@ -75,5 +77,5 @@ In the Claude app, a session can now ask to connect to `/work/widgetkeeper` (or 
 - Nothing running: `/work/buildbox/rc.sh list`; what happened: `cat /work/buildbox/state/rc.log`; the live windows: `tmux attach -t rc` (Ctrl-b then d to leave).
 - After a NAS restart everything comes back by itself (auto-restart and the supervisor).
 - A Remote Control that doesn't come up: `/work/buildbox/rc.sh logs <folder>` shows its screen (an expired login, say).
-- Deleting and re-creating the container: do step 5 again with the execution command `bash /work/buildbox/rc.sh supervise`, nothing more. The logins are in `/work/home` and the supervisor installs tmux and Claude Code again.
+- Deleting and re-creating the container: do step 5 again, nothing more. The logins are in `/work/home` and the supervisor installs tmux and Claude Code again.
 - A change pushed to the buildbox repo reaches the NAS within an hour by itself.

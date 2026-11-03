@@ -18,9 +18,10 @@ A Docker container on the Synology NAS at home that runs Claude Code with Remote
 
 1. Package Center → **Container Manager**. File Station → the folder `docker/buildbox`.
 2. Container Manager → Registry → `node` → Download → tag `22-bookworm`.
-3. Image → `node:22-bookworm` → Run: name `buildbox`, **Enable auto-restart**, volume `docker/buildbox` → `/work`, execution command `sleep infinity` (for now), environment variable `HOME` = `/work/home`.
-4. Container → `buildbox` → Action → Open terminal → Create → `bash`:
+3. Image → `node:22-bookworm` → Run: name `buildbox`, **Enable auto-restart**, volume `docker/buildbox` → `/work`, execution command `bash -c 'until [ -x /work/buildbox/rc.sh ]; do sleep 10; done; exec bash /work/buildbox/rc.sh supervise'` (it waits for this repo, then supervises; Container Manager may not let it be changed later), environment variable `HOME` = `/work/home`.
+4. A terminal in the container (DSM's Open terminal, or SSH and `sudo docker exec -it buildbox bash`, where pasting works on a phone):
    ```
+   mkdir -p /work/home && cd /work/home
    apt-get update && apt-get install -y tmux
    npm install -g @anthropic-ai/claude-code
    git config --global credential.helper store
@@ -28,13 +29,13 @@ A Docker container on the Synology NAS at home that runs Claude Code with Remote
    claude        # log in once, then /exit
    ```
    `git clone` asks for a GitHub user and a personal access token (the repo is private); the credential helper keeps it, so later clones and fetches don't ask.
-5. Stop the container, change its execution command to `bash /work/buildbox/rc.sh supervise` and start it again. From then on a container or NAS restart brings every Remote Control back by itself.
+5. The supervisor starts by itself once the clone is there. From then on a container or NAS restart brings every Remote Control back by itself.
 6. Add the repos, here or from a session in the buildbox folder:
    ```
    /work/buildbox/rc.sh clone https://github.com/thomassidor/widgetkeeper.git
    ```
 
-The logins (Claude, GitHub, and those of tools like the Homey CLI) live in `/work/home`, so they survive a re-created container too. A container made without `HOME=/work/home` still works: `rc.sh` moves to `/work/home` by itself (the first time copying the container's own home there), but a terminal opened in DSM then has the old home. What step 4 installed is lost with the container; the supervisor installs tmux and Claude Code again when they're missing. So a new container needs only step 3, with `bash /work/buildbox/rc.sh supervise` as its command.
+The logins (Claude, GitHub, and those of tools like the Homey CLI) live in `/work/home`, so they survive a re-created container too. A container made without `HOME=/work/home` still works: `rc.sh` moves to `/work/home` by itself (the first time copying the container's own home there), but a terminal opened in DSM then has the old home. What step 4 installed is lost with the container; the supervisor installs tmux and Claude Code again when they're missing. So a new container needs only step 3.
 
 ## Using it
 
