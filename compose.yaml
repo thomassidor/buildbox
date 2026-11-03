@@ -1,0 +1,23 @@
+# The buildbox container, for a Container Manager project (Project → Create, path docker/buildbox;
+# SETUP.md step 5). The project's folder is the volume: `.` here is docker/buildbox, /work inside.
+# On an empty volume the command clones this repo (public, no login needed) and then supervises;
+# after that `rc.sh login` in a terminal is the only step left. Changing this file and rebuilding
+# the project re-creates the container; the volume keeps the logins, the repos and state/.
+services:
+  buildbox:
+    image: node:22-bookworm
+    container_name: buildbox
+    restart: always
+    environment:
+      HOME: /work/home
+    volumes:
+      - .:/work
+    command:
+      - bash
+      - -c
+      - >-
+        mkdir -p /work/home;
+        [ -x /work/buildbox/rc.sh ] ||
+        git clone https://github.com/thomassidor/buildbox.git /work/buildbox ||
+        { sleep 30; exit 1; };
+        exec bash /work/buildbox/rc.sh supervise

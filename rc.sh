@@ -12,6 +12,8 @@
 #                                         (the folder stays; this one can't be removed)
 #   rc.sh list                            the folders and whether each one's Remote Control runs
 #   rc.sh logs <folder> [lines]           the end of a folder's Remote Control screen and its log lines
+#   rc.sh login                           logs Claude Code and the GitHub CLI in (what isn't already),
+#                                         has git use gh's login and sets git's name: a new box's one step
 #   rc.sh install                         installs what the container lacks: tmux, Claude Code, the
 #                                         GitHub CLI (gh), and what state/extras lists (`chromium`: a browser for renders)
 #
@@ -22,8 +24,8 @@ set -u
 
 # No command (or an unknown one): only the help, before anything touches the disk.
 case "${1:-}" in
-  supervise|run|clone|add|remove|list|logs|install) ;;
-  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  supervise|run|clone|add|remove|list|logs|login|install) ;;
+  *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
 
 BOX="$(cd "$(dirname "$0")" && pwd)"
@@ -114,7 +116,10 @@ run() {
     wait=$((5 << (quick > 6 ? 6 : quick))); [ "$wait" -gt 300 ] && wait=300
     [ "$quick" -le 1 ] && wait=5
     log "$name: remote-control exited ($code) after ${took}s, restarting in ${wait}s"
-    [ "$quick" -eq 3 ] && log "$name: keeps exiting right away; see rc.sh logs $name"
+    if [ "$quick" -eq 3 ]; then
+      logged_in || log "$name: Claude Code isn't logged in; run rc.sh login in a terminal"
+      log "$name: keeps exiting right away; see rc.sh logs $name"
+    fi
     sleep "$wait"
   done
 }
@@ -138,13 +143,17 @@ setup() {
   fi || die "setting up $dir failed"
 }
 
-# What the container lacks after it's re-created (the volume keeps the rest).
+# What the container lacks after it's re-created (the volume keeps the rest). Locked, as a login
+# typed into a new container's terminal can come while the supervisor is still installing.
 install_missing() {
+  ( flock 9 && install_missing_now 9>&- ) 9>"$STATE/install.lock"
+}
+
+install_missing_now() {
   command -v tmux >/dev/null || { log "installing tmux"; apt-get update -q && apt-get install -y -q tmux; } ||
     log "installing tmux failed"
   command -v "$CLAUDE_BIN" >/dev/null || { log "installing Claude Code"; npm install -g @anthropic-ai/claude-code; } ||
     log "installing Claude Code failed"
-  [ -n "$(git config --global credential.helper)" ] || git config --global credential.helper store
   command -v gh >/dev/null || install_gh || log "installing the GitHub CLI failed"
   extra chromium && install_chromium
   return 0
@@ -235,6 +244,43 @@ trim_log() {
   return 0
 }
 
+logged_in() { "$CLAUDE_BIN" auth status >/dev/null 2>&1; }
+
+# The one step a new box needs from someone: the logins, each only when it's missing. Claude Code's
+# and gh's each print a link to open and take a code back; both stay in the home folder on the volume.
+login() {
+  local fresh=0 dir
+  command -v "$CLAUDE_BIN" >/dev/null && command -v gh >/dev/null && command -v tmux >/dev/null ||
+    { echo "installing what's missing first (a minute or two)"; install_missing; }
+  if logged_in; then echo "Claude Code: logged in"
+  else
+    echo "== Claude Code: open the link, log in, paste the code back"
+    "$CLAUDE_BIN" auth login || die "Claude Code's login failed; run rc.sh login again"
+    logged_in || die "Claude Code still isn't logged in; run rc.sh login again"
+    fresh=1; log "login: Claude Code logged in"
+  fi
+  if gh auth status -h github.com >/dev/null 2>&1; then echo "GitHub: logged in"
+  else
+    echo "== GitHub: enter the code it shows at https://github.com/login/device"
+    gh auth login -h github.com -p https -w -s workflow || die "GitHub's login failed; run rc.sh login again"
+    log "login: GitHub logged in"
+  fi
+  gh auth setup-git || die "gh auth setup-git failed"
+  git config --global user.name >/dev/null || git config --global user.name Claude
+  git config --global user.email >/dev/null || git config --global user.email noreply@anthropic.com
+  # The Remote Controls were waiting for the login, up to 5 minutes apart: started again now, so
+  # they come up at once. None of them was connected, so no session drops.
+  if [ "$fresh" = 1 ]; then
+    while read -r dir; do stop "$dir"; done < <(folders)
+    if [ -n "$(pgrep -f 'rc\.sh supervise' 2>/dev/null)" ]; then
+      echo "the Remote Controls start again within ${CHECK_EVERY}s"
+    else
+      echo "no supervisor running: the container's command starts it"
+    fi
+  fi
+  echo "== done"
+}
+
 # A folder name: no slashes, no leading dot, nothing a shell or tmux would trip on.
 plain() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "'$1': letters, digits, . _ - only"; }
 
@@ -261,6 +307,7 @@ case "${1:-}" in
     trap 'log "supervisor stopped"; exit 0' TERM INT
     log "supervisor started"
     install_missing
+    logged_in || log "Claude Code isn't logged in; run rc.sh login in a terminal"
     apply_settings
     last_update=-$UPDATE_EVERY
     while true; do
@@ -273,6 +320,9 @@ case "${1:-}" in
     ;;
   install)
     install_missing
+    ;;
+  login)
+    login
     ;;
   run)
     run "${2:?usage: rc.sh run <folder>}"
@@ -331,7 +381,7 @@ case "${1:-}" in
     done < <(folders)
     ;;
   *)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac
