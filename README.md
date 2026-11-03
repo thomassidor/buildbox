@@ -28,7 +28,7 @@ A Docker container on the Synology NAS at home that runs Claude Code with Remote
    git clone https://github.com/thomassidor/buildbox.git /work/buildbox
    claude        # log in once, then /exit
    ```
-   `git clone` asks for a GitHub user and a personal access token (the repo is private); the credential helper keeps it, so later clones and fetches don't ask.
+   The repo is public, so the clone needs no login. Pushing does: see *GitHub* below.
 5. The supervisor starts by itself once the clone is there. From then on a container or NAS restart brings every Remote Control back by itself.
 6. Add the repos, here or from a session in the buildbox folder:
    ```
@@ -53,6 +53,14 @@ The logins (Claude, GitHub, and those of tools like the Homey CLI) live in `/wor
 - A supervised folder is marked trusted in `~/.claude.json`, as nobody is there to answer Claude Code's question.
 - Folder names are letters, digits, `.`, `_` and `-`, and unique by name (each is a tmux window).
 - Settings by environment variable: `WORK` (`/work`), `STATE` (`state/` here), `BOX_HOME` (`/work/home`), `CLAUDE_BIN`, `TMUX_SESSION` (`rc`), `CHECK_EVERY` (15 s), `UPDATE_EVERY` (3600 s; 0 for no pulls).
+
+## GitHub
+
+Sessions push and open pull requests with the GitHub CLI (`gh`), logged in as me with full access to my repos (scopes `repo`, `workflow`, `read:org`, `gist`; my choice, 2026-11-03). `gh auth setup-git` has git use that login for github.com, so `git push` works too. Commits on the box are authored as `Claude <noreply@anthropic.com>` (`~/.gitconfig`). The login is in `~/.config/gh` on the volume and doesn't expire; `rc.sh install` (and the supervisor at every start) installs `gh` again in a re-created container. To log in again, from a terminal or a session here:
+```
+gh auth login -h github.com -p https -w -s workflow && gh auth setup-git
+```
+It prints a code to enter at https://github.com/login/device. `gh auth status` shows the login; revoking it on GitHub (Settings → Applications → Authorized OAuth Apps → GitHub CLI) cuts the box off.
 
 ## Widgetkeeper
 

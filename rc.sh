@@ -12,8 +12,8 @@
 #                                         (the folder stays; this one can't be removed)
 #   rc.sh list                            the folders and whether each one's Remote Control runs
 #   rc.sh logs <folder> [lines]           the end of a folder's Remote Control screen and its log lines
-#   rc.sh install                         installs what the container lacks: tmux, Claude Code, and what
-#                                         state/extras lists (`chromium`: a browser for renders)
+#   rc.sh install                         installs what the container lacks: tmux, Claude Code, the
+#                                         GitHub CLI (gh), and what state/extras lists (`chromium`: a browser for renders)
 #
 # One `claude remote-control` serves every session in its folder, so a worktree is only for
 # work that needs its own copy of the code. Setting up a folder runs its .buildbox/setup.sh
@@ -145,8 +145,21 @@ install_missing() {
   command -v "$CLAUDE_BIN" >/dev/null || { log "installing Claude Code"; npm install -g @anthropic-ai/claude-code; } ||
     log "installing Claude Code failed"
   [ -n "$(git config --global credential.helper)" ] || git config --global credential.helper store
+  command -v gh >/dev/null || install_gh || log "installing the GitHub CLI failed"
   extra chromium && install_chromium
   return 0
+}
+
+# The GitHub CLI, from GitHub's apt repository. Its login (~/.config/gh) is on the volume, and
+# `gh auth setup-git` has git use it for github.com, so only the program needs installing again.
+install_gh() {
+  log "installing the GitHub CLI"
+  local key=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+  mkdir -p /etc/apt/keyrings &&
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "$key" &&
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=$key] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list &&
+    apt-get update -q && apt-get install -y -q gh
 }
 
 # What state/extras asks for, one word a line (an opt-in, as it downloads a lot from outside).
