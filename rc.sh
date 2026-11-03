@@ -139,6 +139,39 @@ install_missing() {
   [ -n "$(git config --global credential.helper)" ] || git config --global credential.helper store
 }
 
+# claude-settings.json here, merged into the box's ~/.claude/settings.json (objects merged,
+# lists joined, the rest of that file kept), written only when it changes. New sessions read it.
+apply_settings() {
+  [ -f "$BOX/claude-settings.json" ] || return 0
+  mkdir -p "$HOME/.claude"
+  local out
+  out="$(node -e '
+    const fs = require("fs"), [src, dst] = process.argv.slice(1);
+    let text = "{}"; try { text = fs.readFileSync(dst, "utf8"); } catch {}
+    let current; try { current = JSON.parse(text); } catch { console.log("broken"); process.exit(); }
+    const isObj = v => v && typeof v === "object" && !Array.isArray(v);
+    const merge = (a, b) => {
+      for (const [k, v] of Object.entries(b)) {
+        if (isObj(v) && isObj(a[k])) merge(a[k], v);
+        else if (Array.isArray(v) && Array.isArray(a[k])) a[k] = [...new Set([...a[k], ...v])];
+        else a[k] = v;
+      }
+      return a;
+    };
+    const after = merge(JSON.parse(text), JSON.parse(fs.readFileSync(src, "utf8")));
+    if (JSON.stringify(current) !== JSON.stringify(after)) {
+      fs.writeFileSync(dst, JSON.stringify(after, null, 2) + "\n");
+      console.log("changed");
+    }
+  ' "$BOX/claude-settings.json" "$HOME/.claude/settings.json" 2>&1)" || true
+  case "$out" in
+    changed) log "settings: $HOME/.claude/settings.json updated from claude-settings.json" ;;
+    broken) log "settings: $HOME/.claude/settings.json isn't valid JSON; left as it is" ;;
+    ?*) log "settings: couldn't apply claude-settings.json: $out" ;;
+  esac
+  return 0
+}
+
 # Pulls this repo; a new rc.sh takes over the supervisor (the windows keep running).
 update() {
   local before after
@@ -147,6 +180,7 @@ update() {
   after="$(git -C "$BOX" rev-parse HEAD)"
   [ "$before" = "$after" ] && return 0
   log "update: $BOX at ${after:0:7}"
+  apply_settings
   if ! git -C "$BOX" diff --quiet "$before" "$after" -- rc.sh; then
     log "update: rc.sh changed, supervisor restarting"
     exec bash "$BOX/rc.sh" supervise
@@ -186,6 +220,7 @@ case "${1:-}" in
     trap 'log "supervisor stopped"; exit 0' TERM INT
     log "supervisor started"
     install_missing
+    apply_settings
     last_update=-$UPDATE_EVERY
     while true; do
       if [ "$UPDATE_EVERY" -gt 0 ] && [ $((SECONDS - last_update)) -ge "$UPDATE_EVERY" ]; then
