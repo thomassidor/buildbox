@@ -68,7 +68,14 @@ trust() {
   ' "$1" 2>/dev/null || log "couldn't mark $1 trusted"
 }
 
+# The supervisor and a clone or add run at the same time can both find a folder not running;
+# the lock makes the second one see the first one's window, so a folder never gets two.
 start() {
+  # tmux's server lives on and would keep the lock, so what start_window runs gets it closed.
+  ( flock 9 && { running "$1" || start_window "$1" 9>&-; } ) 9>"$STATE/start.lock"
+}
+
+start_window() {
   local dir="$1" name cmd
   name="$(window "$dir")"
   [ -d "$dir" ] || { log "$dir is missing; skipped"; return 1; }
