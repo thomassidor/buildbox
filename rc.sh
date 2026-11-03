@@ -12,11 +12,19 @@
 #                                         (the folder stays; this one can't be removed)
 #   rc.sh list                            the folders and whether each one's Remote Control runs
 #   rc.sh logs <folder> [lines]           the end of a folder's Remote Control screen and its log lines
+#   rc.sh install                         installs what the container lacks: tmux, Claude Code, and what
+#                                         state/extras lists (`chromium`: a browser for renders)
 #
 # One `claude remote-control` serves every session in its folder, so a worktree is only for
 # work that needs its own copy of the code. Setting up a folder runs its .buildbox/setup.sh
 # if it has one, else `npm ci` (or `npm install` without a lockfile) for a Node project.
 set -u
+
+# No command (or an unknown one): only the help, before anything touches the disk.
+case "${1:-}" in
+  supervise|run|clone|add|remove|list|logs|install) ;;
+  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
 
 BOX="$(cd "$(dirname "$0")" && pwd)"
 WORK="${WORK:-/work}"
@@ -137,6 +145,26 @@ install_missing() {
   command -v "$CLAUDE_BIN" >/dev/null || { log "installing Claude Code"; npm install -g @anthropic-ai/claude-code; } ||
     log "installing Claude Code failed"
   [ -n "$(git config --global credential.helper)" ] || git config --global credential.helper store
+  extra chromium && install_chromium
+  return 0
+}
+
+# What state/extras asks for, one word a line (an opt-in, as it downloads a lot from outside).
+extra() { grep -qx "$1" "$STATE/extras" 2>/dev/null; }
+
+# chromium: Playwright's Chromium headless shell for renders (chromium-render here), its system libraries
+# and the fonts the pages use. The browser lands in ~/.cache on the volume, so a re-created container only
+# needs the libraries and fonts again.
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.64.1}"
+install_chromium() {
+  local fonts="fonts-roboto fonts-liberation2 fonts-noto-color-emoji" pw=(npx -y "playwright@$PLAYWRIGHT_VERSION")
+  "$BOX/chromium-render" --version >/dev/null 2>&1 && dpkg -s $fonts >/dev/null 2>&1 && return 0
+  log "installing Chromium for renders (Playwright $PLAYWRIGHT_VERSION) and fonts"
+  { "${pw[@]}" install chromium-headless-shell && "${pw[@]}" install-deps chromium-headless-shell &&
+    apt-get install -y -q $fonts; } >> "$STATE/install.log" 2>&1 &&
+    "$BOX/chromium-render" --version >/dev/null 2>&1 ||
+    { log "installing Chromium failed; see state/install.log"; return 0; }
+  log "Chromium: $("$BOX/chromium-render" --version 2>/dev/null)"
 }
 
 # claude-settings.json here, merged into the box's ~/.claude/settings.json (objects merged,
@@ -230,6 +258,9 @@ case "${1:-}" in
       sleep "$CHECK_EVERY" & wait $!
     done
     ;;
+  install)
+    install_missing
+    ;;
   run)
     run "${2:?usage: rc.sh run <folder>}"
     ;;
@@ -287,7 +318,7 @@ case "${1:-}" in
     done < <(folders)
     ;;
   *)
-    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac
