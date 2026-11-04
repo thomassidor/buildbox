@@ -4,6 +4,7 @@
   },
   "skipAutoPermissionPrompt": true,
   "env": {
-    "EDGE": "/work/buildbox/chromium-render"
+    "EDGE": "/work/buildbox/chromium-render",
+    "TZ": "Europe/Copenhagen"
   }
 }

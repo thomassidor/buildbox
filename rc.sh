@@ -15,7 +15,8 @@
 #   rc.sh login                           logs Claude Code and the GitHub CLI in (what isn't already),
 #                                         has git use gh's login and sets git's name: a new box's one step
 #   rc.sh install                         installs what the container lacks: tmux, Claude Code, the
-#                                         GitHub CLI (gh), and what state/extras lists (`chromium`: a browser for renders)
+#                                         GitHub CLI (gh), python (python-is-python3, Pillow), and what
+#                                         state/extras lists (`chromium`: a browser for renders, also on the PATH)
 #
 # One `claude remote-control` serves every session in its folder, so a worktree is only for
 # work that needs its own copy of the code. Setting up a folder runs its .buildbox/setup.sh
@@ -155,6 +156,10 @@ install_missing_now() {
   command -v "$CLAUDE_BIN" >/dev/null || { log "installing Claude Code"; npm install -g @anthropic-ai/claude-code; } ||
     log "installing Claude Code failed"
   command -v gh >/dev/null || install_gh || log "installing the GitHub CLI failed"
+  # `python` as on the PC (python -m http.server) and Pillow for the odd image snippet.
+  { command -v python >/dev/null && python3 -c 'import PIL' 2>/dev/null; } ||
+    { log "installing python-is-python3 and python3-pil"; apt-get update -q && apt-get install -y -q python-is-python3 python3-pil; } ||
+    log "installing python failed"
   extra chromium && install_chromium
   return 0
 }
@@ -175,11 +180,14 @@ install_gh() {
 extra() { grep -qx "$1" "$STATE/extras" 2>/dev/null; }
 
 # chromium: Playwright's Chromium headless shell for renders (chromium-render here), its system libraries
-# and the fonts the pages use. The browser lands in ~/.cache on the volume, so a re-created container only
-# needs the libraries and fonts again.
+# and the fonts the pages use, and /usr/local/bin/chromium linked to chromium-render. The browser lands in
+# ~/.cache on the volume, so a re-created container only needs the libraries, the fonts and the link again.
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.64.1}"
 install_chromium() {
   local fonts="fonts-roboto fonts-liberation2 fonts-noto-color-emoji" pw=(npx -y "playwright@$PLAYWRIGHT_VERSION")
+  # On the PATH as `chromium` too, so a session looking for a browser finds one (not `msedge`: it isn't Edge).
+  [ "$(readlink /usr/local/bin/chromium 2>/dev/null)" = "$BOX/chromium-render" ] ||
+    ln -sfn "$BOX/chromium-render" /usr/local/bin/chromium || log "linking /usr/local/bin/chromium failed"
   "$BOX/chromium-render" --version >/dev/null 2>&1 && dpkg -s $fonts >/dev/null 2>&1 && return 0
   log "installing Chromium for renders (Playwright $PLAYWRIGHT_VERSION) and fonts"
   { "${pw[@]}" install chromium-headless-shell && "${pw[@]}" install-deps chromium-headless-shell &&
