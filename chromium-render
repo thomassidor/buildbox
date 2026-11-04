@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The browser for renders on the box (EDGE=/work/buildbox/chromium-render): Playwright's Chromium headless
-# shell, which rc.sh installs when state/extras lists `chromium` (the NAS is arm64, and Edge has no arm64
-# build for Linux). It is headless already, so --headless=new is dropped (the full Chromium never exits with
+# shell, which rc.sh installs when state/extras lists `chromium` (Edge's Linux build would run on the
+# x86-64 NAS too, but would draw text as Linux does, so it wouldn't match Windows renders either). It is headless already, so --headless=new is dropped (the full Chromium never exits with
 # it), and the box runs as root, where Chromium only starts with --no-sandbox.
 shell="$(find "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}" -maxdepth 3 -type f -perm -u+x \
   \( -name headless_shell -o -name chrome-headless-shell \) -path '*chromium_headless_shell-*' 2>/dev/null | sort -V | tail -1)"
