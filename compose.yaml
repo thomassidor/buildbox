@@ -7,6 +7,7 @@ services:
   buildbox:
     image: node:22-bookworm
     container_name: buildbox
+    hostname: buildbox  # the device name in the Claude app (else the container ID)
     restart: always
     environment:
       HOME: /work/home
