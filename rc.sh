@@ -62,6 +62,13 @@ folders() { echo "$BOX"; grep -v '^\s*\(#\|$\)' "$LIST" | grep -vx "$BOX"; }
 # A window per folder, named after it.
 window() { basename "$1"; }
 
+# The tmux ID of a window by its name. tmux can't target a name with a dot (wk-1.2.0): it reads
+# what follows the dot as a pane.
+window_id() {
+  tmux list-windows -t "$TMUX_SESSION" -F '#{window_id} #{window_name}' 2>/dev/null |
+    while read -r id name; do [ "$name" = "$1" ] && echo "$id"; done
+}
+
 running() {
   tmux has-session -t "$TMUX_SESSION" 2>/dev/null &&
     tmux list-windows -t "$TMUX_SESSION" -F '#{window_name}' | grep -qx "$(window "$1")"
@@ -126,9 +133,10 @@ run() {
 }
 
 stop() {
-  local name
+  local name id
   name="$(window "$1")"
-  tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null && log "$name: stopped"
+  id="$(window_id "$name")"
+  [ -n "$id" ] && tmux kill-window -t "$id" 2>/dev/null && log "$name: stopped"
 }
 
 ensure() {
@@ -375,8 +383,9 @@ case "${1:-}" in
     name="$(basename "${2:?usage: rc.sh logs <folder> [lines]}")"
     lines="${3:-40}"
     echo "== $name: the end of its screen"
-    if tmux list-windows -t "$TMUX_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$name"; then
-      tmux capture-pane -p -J -t "$TMUX_SESSION:$name" -S "-$lines" | awk 'NF { while (n) { print ""; n-- } print; next } { n++ }'
+    id="$(window_id "$name")"
+    if [ -n "$id" ]; then
+      tmux capture-pane -p -J -t "$id" -S "-$lines" | awk 'NF { while (n) { print ""; n-- } print; next } { n++ }'
     else
       echo "(no window: rc.sh list shows whether it runs)"
     fi
