@@ -205,6 +205,16 @@ install_chromium() {
   log "Chromium: $("$BOX/chromium-render" --version 2>/dev/null)"
 }
 
+# claude-user.md here is the box's ~/.claude/CLAUDE.md, the instructions of every session in
+# every folder: this file is the original, so a change made only there is overwritten.
+apply_instructions() {
+  [ -f "$BOX/claude-user.md" ] || return 0
+  mkdir -p "$HOME/.claude"
+  cmp -s "$BOX/claude-user.md" "$HOME/.claude/CLAUDE.md" && return 0
+  cp "$BOX/claude-user.md" "$HOME/.claude/CLAUDE.md" &&
+    log "instructions: $HOME/.claude/CLAUDE.md updated from claude-user.md"
+}
+
 # claude-settings.json here, merged into the box's ~/.claude/settings.json (objects merged,
 # lists joined, the rest of that file kept), written only when it changes. New sessions read it.
 apply_settings() {
@@ -247,6 +257,7 @@ update() {
   [ "$before" = "$after" ] && return 0
   log "update: $BOX at ${after:0:7}"
   apply_settings
+  apply_instructions
   if ! git -C "$BOX" diff --quiet "$before" "$after" -- rc.sh; then
     log "update: rc.sh changed, supervisor restarting"
     exec bash "$BOX/rc.sh" supervise
@@ -325,6 +336,7 @@ case "${1:-}" in
     install_missing
     logged_in || log "Claude Code isn't logged in; run rc.sh login in a terminal"
     apply_settings
+    apply_instructions
     last_update=-$UPDATE_EVERY
     while true; do
       if [ "$UPDATE_EVERY" -gt 0 ] && [ $((SECONDS - last_update)) -ge "$UPDATE_EVERY" ]; then
